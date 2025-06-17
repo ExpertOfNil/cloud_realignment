@@ -3,7 +3,10 @@ package main
 import "core:fmt"
 import "core:math"
 import "core:math/linalg"
+import "core:slice"
 import rl "vendor:raylib"
+
+POINT_RADIUS :: 0.05
 
 PanOrbitCamera :: struct {
 	target:          rl.Vector3,
@@ -86,13 +89,7 @@ update_pan_orbit_camera :: proc(camera: ^PanOrbitCamera) -> rl.Camera {
 	}
 }
 
-Collision :: struct {
-	hit:      bool,
-	distance: f32,
-	index:    uint,
-}
-
-draw_axis :: proc(mat: ^rl.Matrix) {
+draw_axis :: proc(mat: rl.Matrix) {
 	origin := rl.Vector3{mat[0, 3], mat[1, 3], mat[2, 3]}
 	x_axis := rl.Vector3{mat[0, 0], mat[1, 0], mat[2, 0]}
 	y_axis := rl.Vector3{mat[0, 1], mat[1, 1], mat[2, 1]}
@@ -101,6 +98,70 @@ draw_axis :: proc(mat: ^rl.Matrix) {
 	rl.DrawCylinderEx(origin, origin + x_axis, 0.02, 0.02, 10, rl.RED)
 	rl.DrawCylinderEx(origin, origin + y_axis, 0.02, 0.02, 10, rl.GREEN)
 	rl.DrawCylinderEx(origin, origin + z_axis, 0.02, 0.02, 10, rl.BLUE)
+}
+
+draw_points :: proc(pts: ^[]rl.Vector3, sel: ^PointSelection) {
+	for pt, i in pts {
+		is_selected := false
+		for index: uint = 0; index < sel.size; index += 1 {
+			if uint(i) == sel.indexes[index] {
+				is_selected = true
+				break
+			}
+		}
+		if is_selected {
+			rl.DrawSphere(pt, POINT_RADIUS, rl.YELLOW)
+		} else {
+			rl.DrawSphere(pt, POINT_RADIUS, rl.WHITE)
+		}
+	}
+}
+
+PointSelection :: struct {
+	points:  [3]rl.Vector3,
+	indexes: [3]uint,
+	size:    uint,
+}
+
+point_selection_append :: proc(sel: ^PointSelection, pt: rl.Vector3, index: uint) {
+	sel.size = 0 if sel.size >= 3 else sel.size
+	sel.indexes[sel.size] = uint(index)
+	sel.points[sel.size] = pt
+	sel.size += 1
+}
+
+point_selection_align :: proc(sel: ^PointSelection, mat: ^rl.Matrix) {
+	// Do 1-2-3 alignment
+	if sel.size == 3 && rl.IsKeyDown(.A) {
+		// Point
+		origin := &sel.points[0]
+		mat[0, 3] = origin.x
+		mat[1, 3] = origin.y
+		mat[2, 3] = origin.z
+
+		// Axis
+		axis_pt := &sel.points[1]
+		u := rl.Vector3{axis_pt.x - origin.x, axis_pt.y - origin.y, axis_pt.z - origin.z}
+		u = linalg.normalize(u)
+		mat[0, 0] = u.x
+		mat[1, 0] = u.y
+		mat[2, 0] = u.z
+
+		// Plane
+		plane_pt := &sel.points[2]
+		v := rl.Vector3{plane_pt.x - origin.x, plane_pt.y - origin.y, plane_pt.z - origin.z}
+		v = linalg.normalize(v)
+		w := linalg.cross(u, v)
+		mat[0, 2] = w.x
+		mat[1, 2] = w.y
+		mat[2, 2] = w.z
+
+		// Other Axis
+		v = linalg.cross(w, u)
+		mat[0, 1] = v.x
+		mat[1, 1] = v.y
+		mat[2, 1] = v.z
+	}
 }
 
 main :: proc() {
@@ -141,11 +202,13 @@ main :: proc() {
 		{1.0, -1.0, 1.0},
 	}
 
-	pt_rad :: 0.05
-	selected_idx := -1
+	pt_selection: PointSelection = {
+		points  = {rl.Vector3(0), rl.Vector3(0), rl.Vector3(0)},
+		indexes = {0, 0, 0},
+		size    = 0,
+	}
 
 	aligned_mat := rl.Matrix(1)
-	fmt.println("Mat: %v", aligned_mat)
 
 	rl.SetTargetFPS(60)
 	for !rl.WindowShouldClose() {
@@ -156,48 +219,52 @@ main :: proc() {
 		rl.BeginMode3D(rl_camera)
 
 		rl.ClearBackground(rl.Color{24, 24, 24, 255})
-		rl.DrawLine3D(rl.Vector3(0), {1.0, 0.0, 0.0}, rl.RED)
-		rl.DrawLine3D(rl.Vector3(0), {0.0, 1.0, 0.0}, rl.GREEN)
-		rl.DrawLine3D(rl.Vector3(0), {0.0, 0.0, 1.0}, rl.BLUE)
 
-		if rl.IsMouseButtonDown(.LEFT) {
+		if rl.IsKeyDown(.ESCAPE) {
+			pt_selection.size = 0
+		}
+
+		if rl.IsMouseButtonPressed(.LEFT) {
 			mouse_ray := rl.GetScreenToWorldRay(mouse_pos, rl_camera)
 			found_collision := false
 			selected_distance := max(f32)
+			selected_point := rl.Vector3(0)
+			selected_index: uint = 0
 			for pt, i in pts {
-				ray_collision := rl.GetRayCollisionSphere(mouse_ray, pt, pt_rad)
+				ray_collision := rl.GetRayCollisionSphere(mouse_ray, pt, POINT_RADIUS)
 				if ray_collision.hit && ray_collision.distance < selected_distance {
-					selected_idx = i
+					selected_index = uint(i)
+					selected_point = pt
 					selected_distance = ray_collision.distance
 					found_collision = true
 				}
 			}
 
-			if !found_collision {
-				selected_idx = -1
+			if found_collision {
+				point_selection_append(&pt_selection, selected_point, selected_index)
+			} else {
+				pt_selection.size = 0
 			}
 		}
 
-		if selected_idx >= 0 && rl.IsKeyDown(.O) {
-			pt := &pts[selected_idx]
+		// Do origin alignment
+		if pt_selection.size == 1 && rl.IsKeyDown(.A) {
+			pt := &pt_selection.points[pt_selection.size - 1]
 			aligned_mat[0, 3] = pt.x
 			aligned_mat[1, 3] = pt.y
 			aligned_mat[2, 3] = pt.z
 		}
 
-		for pt, i in pts {
-			if selected_idx != i {
-				rl.DrawSphere(pt, pt_rad, rl.WHITE)
-			} else {
-				rl.DrawSphere(pt, pt_rad, rl.YELLOW)
-			}
-		}
+		// Do 1-2-3 alignment
+		point_selection_align(&pt_selection, &aligned_mat)
 
-        draw_axis(&aligned_mat)
+		// Draw points
+		draw_points(&pts, &pt_selection)
 
+		// Draw aligned axis
+		draw_axis(aligned_mat)
 
 		rl.EndMode3D()
-		rl.DrawText(rl.TextFormat("SELECTED: %d", selected_idx), 10, 10, 20, rl.RED)
 		rl.EndDrawing()
 	}
 }
