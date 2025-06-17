@@ -168,6 +168,7 @@ main :: proc() {
 	rl.InitWindow(1280, 720, "Alignment")
 
 	po_camera := init_pan_orbit_camera(rl.Vector3(0), 10.0)
+    po_camera_orig := po_camera
 
 	pts: []rl.Vector3 = {
 		//
@@ -255,18 +256,24 @@ main :: proc() {
 			aligned_mat[2, 3] = pt.z
 		}
 
+        // Move everything into alignment with the world
 		if rl.IsKeyDown(.C) {
-            pt_selection.size = 0
-            m_inv := linalg.inverse(aligned_mat)
-            for &pt in pts {
-                pt_local := m_inv * [4]f32{pt.x, pt.y, pt.z, 1.0}
-                pt.x = pt_local[0]
-                pt.y = pt_local[1]
-                pt.z = pt_local[2]
-            }
+			pt_selection.size = 0
+			m_inv := linalg.inverse(aligned_mat)
+			for &pt in pts {
+				pt_local := m_inv * [4]f32{pt.x, pt.y, pt.z, 1.0}
+				pt.x = pt_local[0]
+				pt.y = pt_local[1]
+				pt.z = pt_local[2]
+			}
 
-            aligned_mat = rl.Matrix(1)
+			aligned_mat = rl.Matrix(1)
 		}
+
+        // Reset view
+        if rl.IsKeyDown(.R) {
+            po_camera = po_camera_orig
+        }
 
 		// Do 1-2-3 alignment
 		point_selection_align(&pt_selection, &aligned_mat)
