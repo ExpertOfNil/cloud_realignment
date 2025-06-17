@@ -227,6 +227,9 @@ main :: proc() {
 		rl.BeginMode3D(rl_camera)
 
 		rl.ClearBackground(rl.Color{24, 24, 24, 255})
+		rl.DrawLine3D(rl.Vector3(0), {1.0, 0.0, 0.0}, rl.RED)
+		rl.DrawLine3D(rl.Vector3(0), {0.0, 1.0, 0.0}, rl.GREEN)
+		rl.DrawLine3D(rl.Vector3(0), {0.0, 0.0, 1.0}, rl.BLUE)
 
 		if rl.IsKeyDown(.ESCAPE) {
 			pt_selection.size = 0
