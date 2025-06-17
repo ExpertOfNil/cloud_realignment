@@ -54,6 +54,13 @@ update_pan_orbit_camera :: proc(camera: ^PanOrbitCamera) -> rl.Camera {
 		)
 	}
 
+	// Mouse zoom controls
+	mouse_scroll := rl.GetMouseWheelMove()
+	if mouse_scroll != 0 {
+		camera.distance -= mouse_scroll * camera.zoom_speed
+		camera.distance = math.clamp(camera.distance, camera.distance_min, camera.distance_max)
+	}
+
 	cos_y := math.cos(camera.angle_pitch)
 	sin_y := math.sin(camera.angle_pitch)
 	cos_x := math.cos(camera.angle_yaw)
@@ -168,7 +175,7 @@ main :: proc() {
 	rl.InitWindow(1280, 720, "Alignment")
 
 	po_camera := init_pan_orbit_camera(rl.Vector3(0), 10.0)
-    po_camera_orig := po_camera
+	po_camera_orig := po_camera
 
 	pts: []rl.Vector3 = {
 		//
@@ -256,7 +263,7 @@ main :: proc() {
 			aligned_mat[2, 3] = pt.z
 		}
 
-        // Move everything into alignment with the world
+		// Move everything into alignment with the world
 		if rl.IsKeyDown(.C) {
 			pt_selection.size = 0
 			m_inv := linalg.inverse(aligned_mat)
@@ -270,10 +277,10 @@ main :: proc() {
 			aligned_mat = rl.Matrix(1)
 		}
 
-        // Reset view
-        if rl.IsKeyDown(.R) {
-            po_camera = po_camera_orig
-        }
+		// Reset view
+		if rl.IsKeyDown(.R) {
+			po_camera = po_camera_orig
+		}
 
 		// Do 1-2-3 alignment
 		point_selection_align(&pt_selection, &aligned_mat)
