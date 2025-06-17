@@ -27,8 +27,8 @@ init_pan_orbit_camera :: proc(target: rl.Vector3, distance: f32) -> PanOrbitCame
 	return PanOrbitCamera {
 		target = target,
 		distance = distance,
-		angle_yaw = 45.0,
-		angle_pitch = 45.0,
+		angle_yaw = pi_2 / 2,
+		angle_pitch = pi_2 / 2,
 		distance_min = 1.0,
 		distance_max = 100.0,
 		angle_pitch_min = -pi_2 + 0.01,
@@ -253,6 +253,19 @@ main :: proc() {
 			aligned_mat[0, 3] = pt.x
 			aligned_mat[1, 3] = pt.y
 			aligned_mat[2, 3] = pt.z
+		}
+
+		if rl.IsKeyDown(.C) {
+            pt_selection.size = 0
+            m_inv := linalg.inverse(aligned_mat)
+            for &pt in pts {
+                pt_local := m_inv * [4]f32{pt.x, pt.y, pt.z, 1.0}
+                pt.x = pt_local[0]
+                pt.y = pt_local[1]
+                pt.z = pt_local[2]
+            }
+
+            aligned_mat = rl.Matrix(1)
 		}
 
 		// Do 1-2-3 alignment
